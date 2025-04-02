@@ -43,12 +43,12 @@
 모든 테스트에 동일한 결과를 검증할 수 있도록 `assertStatementContains(result)`를 구성했다.
 
 ### 1. 리팩터링 전: 단일 메서드의 복잡한 로직
-- 파일: [`BaseStatementTest.statement()`](src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java)
+- 파일: [`BaseStatementTest.statement()`](https://github.com/Almondshin/Refactoring2/blob/886ae00d2bc3019c3424cc718d6643b1fa47fa4f/src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java#L59)
 - 특징: 모든 계산(비용, 포인트)과 출력 형식이 하나의 메서드에 얽혀 있다.
 - 문제점: 로직이 뒤엉켜 수정이 어렵고, 가독성이 떨어진다.
 
 ### 2. 1차 리팩터링: 메서드 분리
-- 파일: [`BaseStatementTest.statementRefactored1()`](src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java)
+- 파일: [`BaseStatementTest.statementRefactored1()`](https://github.com/Almondshin/Refactoring2/blob/886ae00d2bc3019c3424cc718d6643b1fa47fa4f/src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java#L114)
 - 변경점:
     - amountFor: 공연별 비용 계산 분리.
     - volumeCreditsFor: 포인트 계산 분리.
@@ -56,7 +56,7 @@
 - 효과: 로직이 모듈화되어 가독성이 좋아지고, 개별 기능 수정이 쉬워졌다.
 
 ### 3. 2차 리팩터링: 메서드 분리
-- 파일: [`BaseStatementTest.statementRefactored2()`](src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java)
+- 파일: [`BaseStatementTest.statementRefactored2()`](https://github.com/Almondshin/Refactoring2/blob/886ae00d2bc3019c3424cc718d6643b1fa47fa4f/src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java#L194)
 - 변경점:
   - createStatementData: 데이터를 준비하는 계산 단계 분리.
   - renderPlainText: 출력 형식을 담당.
@@ -64,7 +64,7 @@
 - 효과: 계산 로직과 출력 형식이 독립적으로 구성, 다른 포맷으로 확장이 쉬워졌다.
 
 ### 4. 3차 리팩터링: 다형성 활용
-- 파일: [`BaseStatementTest.statementRefactored3()`](src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java)
+- 파일: [`BaseStatementTest.statementRefactored3()`](https://github.com/Almondshin/Refactoring2/blob/886ae00d2bc3019c3424cc718d6643b1fa47fa4f/src/test/java/org/refactoring/patterns/Refactoring2/BaseStatementTest.java#L283)
 - 변경점:
   - PerformanceCalculator 추상 클래스를 도입.
   - TragedyCalculator, ComedyCalculator 서브클래스로 장르별 계산 분리.
