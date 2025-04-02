@@ -1,7 +1,8 @@
-// const { statement } = require('./base');
-const { statement } = require('./refactoring/refactoring1');
-const test = require('node:test');
-const assert = require('node:assert');
+// import { statement } from './base.js';
+// import { statement } from './refactoring/refactoring1.js';
+import { statement } from './refactoring/refactoring2.js';
+import test from 'node:test';
+import assert from 'node:assert';
 
 // 테스트용 데이터 정의
 const plays = {
