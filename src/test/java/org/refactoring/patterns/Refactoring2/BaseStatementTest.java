@@ -2,6 +2,7 @@ package org.refactoring.patterns.Refactoring2;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.text.NumberFormat;
 import java.util.HashMap;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+@ExtendWith(RefactoringStageExtension.class)
 public class BaseStatementTest {
 
     private Play hamlet;
@@ -99,9 +101,10 @@ public class BaseStatementTest {
     }
 
     @Test
+    @RefactoringStage("Before")
     void 리팩토링_전_동작() {
         String result = statement(invoice);
-        System.out.println(result);
+        System.out.println("\n리팩토링 전 결과:\n" + result);
     }
 
     // Play 클래스 - 연극 정보
