@@ -25,6 +25,7 @@ public class BaseStatementTest {
 
     private Invoice invoice;
 
+    private Map<String, Play> plays;
 
     @BeforeEach
     void setUp() {
@@ -43,14 +44,17 @@ public class BaseStatementTest {
 
         // Invoice 객체 생성
         invoice = new Invoice("BigCo", performances);
-    }
 
-    private String statement(Invoice invoice) {
-        Map<String, Play> plays = new HashMap<>();
+        plays = new HashMap<>();
         plays.put("hamlet", hamlet);
         plays.put("as-like", asYouLikeIt);
         plays.put("othello", othello);
+    }
 
+    /**
+     * 리팩토링 전 초기 버전: 모든 로직이 하나의 메서드에 포함되어 있음
+     */
+    private String statement(Invoice invoice) {
         long totalAmount = 0;
         int volumeCredits = 0;
         StringBuilder result = new StringBuilder();
@@ -100,6 +104,86 @@ public class BaseStatementTest {
         return result.toString();
     }
 
+    /**
+     * 1차 리팩토링: JavaScript refactoring1.js 기반
+     * - 로직을 여러 메서드로 분리 (amountFor, volumeCreditsFor, totalAmount, totalVolumeCredits)
+     * - 가독성 향상과 모듈화 진행
+     */
+    private String statementRefactored1(Invoice invoice) {
+        StringBuilder result = new StringBuilder();
+        result.append(String.format("청구 내역 (고객명: %s)\n", invoice.getCustomer()));
+
+        for (Performance perf : invoice.getPerformances()) {
+            result.append(String.format("%s: %s (%d석)\n",
+                    playFor(perf).getName(),
+                    usd(amountFor(perf)),
+                    perf.getAudience()));
+        }
+
+        result.append(String.format("총액: %s\n", usd(totalAmount())));
+        result.append(String.format("적립 포인트: %d점\n", totalVolumeCredits()));
+
+        return result.toString();
+    }
+
+    private String usd(long aNumber) {
+        NumberFormat format = NumberFormat.getCurrencyInstance(Locale.US);
+        format.setMinimumFractionDigits(2);
+        return format.format(aNumber / 100.0);
+    }
+
+    private Play playFor(Performance aPerformance) {
+        return plays.get(aPerformance.getPlayID());
+    }
+
+    private long amountFor(Performance aPerformance) {
+        long result = 0;
+
+        switch (playFor(aPerformance).getType()) {
+            case "tragedy":
+                result = 40000;
+                if (aPerformance.getAudience() > 30) {
+                    result += 1000 * (aPerformance.getAudience() - 30);
+                }
+                break;
+            case "comedy":
+                result = 30000;
+                if (aPerformance.getAudience() > 20) {
+                    result += 10000 + 500 * (aPerformance.getAudience() - 20);
+                }
+                result += 300 * aPerformance.getAudience();
+                break;
+            default:
+                throw new IllegalArgumentException("알 수 없는 장르: " + playFor(aPerformance).getType());
+        }
+        return result;
+    }
+
+    private int volumeCreditsFor(Performance aPerformance) {
+        int result = 0;
+        result += Math.max(aPerformance.getAudience() - 30, 0);
+        if ("comedy".equals(playFor(aPerformance).getType())) {
+            result += Math.floorDiv(aPerformance.getAudience(), 5);
+        }
+        return result;
+    }
+
+    private int totalVolumeCredits() {
+        int result = 0;
+        for (Performance perf : invoice.getPerformances()) {
+            result += volumeCreditsFor(perf);
+        }
+        return result;
+    }
+
+    private long totalAmount() {
+        long result = 0;
+        for (Performance perf : invoice.getPerformances()) {
+            result += amountFor(perf);
+        }
+        return result;
+    }
+
     @Test
     @RefactoringStage("Before")
     void 리팩토링_전_동작() {
@@ -107,26 +191,27 @@ public class BaseStatementTest {
         System.out.println("\n리팩토링 전 결과:\n" + result);
     }
 
+    @Test
+    @RefactoringStage("Refactored1")
+    void 리팩토링_1차_동작() {
+        String result = statementRefactored1(invoice);
+        System.out.println("\n리팩토링 전 결과:\n" + result);
+    }
+
+
     // Play 클래스 - 연극 정보
     static class Play {
         private String name;
         private String type;
 
-        public Play() {
-        }
-
+        public Play() {}
         public Play(String name, String type) {
             this.name = name;
             this.type = type;
         }
 
-        public String getName() {
-            return name;
-        }
-
-        public String getType() {
-            return type;
-        }
+        public String getName() {return name;}
+        public String getType() {return type;}
     }
 
     // Performance 클래스 - 공연 정보
@@ -134,21 +219,14 @@ public class BaseStatementTest {
         private String playID;
         private int audience;
 
-        public Performance() {
-        }
-
+        public Performance() {}
         public Performance(String playID, int audience) {
             this.playID = playID;
             this.audience = audience;
         }
 
-        public String getPlayID() {
-            return playID;
-        }
-
-        public int getAudience() {
-            return audience;
-        }
+        public String getPlayID() {return playID;}
+        public int getAudience() {return audience;}
     }
 
     // Invoice 클래스 - 전체 고객과 공연 정보
@@ -156,21 +234,14 @@ public class BaseStatementTest {
         private String customer;
         private List<Performance> performances;
 
-        public Invoice() {
-        }
-
+        public Invoice() {}
         public Invoice(String customer, List<Performance> performances) {
             this.customer = customer;
             this.performances = performances;
         }
 
-        public String getCustomer() {
-            return customer;
-        }
-
-        public List<Performance> getPerformances() {
-            return performances;
-        }
+        public String getCustomer() {return customer;}
+        public List<Performance> getPerformances() {return performances;}
     }
 
 

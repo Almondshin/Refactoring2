@@ -35,8 +35,8 @@ public class RefactoringStageExtension implements BeforeTestExecutionCallback, A
             long endTime = System.nanoTime();
             long duration = (endTime - startTime) / 1_000_000;
 
-            System.out.println("=== Refactoring Step : \"" + stageName + "\" Test End ===");
             System.out.println("실행 시간: " + duration + "ms");
+            System.out.println("=== Refactoring Step : \"" + stageName + "\" Test End ===");
         }
     }
 
