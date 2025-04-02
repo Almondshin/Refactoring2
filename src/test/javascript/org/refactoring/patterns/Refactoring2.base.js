@@ -1,30 +1,21 @@
-// Refactoring2.js
 function statement(invoice, plays) {
     let totalAmount = 0;
     let volumeCredits = 0;
-    let result = `고객명: ${invoice.customer}\n`;
+    let result = `청구 내역 (고객명: ${invoice.customer})\n`;
+    const format = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
 
-    // 통화 형식을 위한 format 함수 정의
-    const format = (amount) => {
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            minimumFractionDigits: 2
-        }).format(amount);
-    };
-
-    for (let perf of invoice.performances) {
+    for (const perf of invoice.performances) {
         const play = plays[perf.playID];
         let thisAmount = 0;
 
         switch (play.type) {
-            case "tragedy":
+            case 'tragedy':
                 thisAmount = 40000;
                 if (perf.audience > 30) {
                     thisAmount += 1000 * (perf.audience - 30);
                 }
                 break;
-            case "comedy":
+            case 'comedy':
                 thisAmount = 30000;
                 if (perf.audience > 20) {
                     thisAmount += 10000 + 500 * (perf.audience - 20);
@@ -36,13 +27,14 @@ function statement(invoice, plays) {
         }
 
         volumeCredits += Math.max(perf.audience - 30, 0);
-        if ("comedy" === play.type) volumeCredits += Math.floor(perf.audience / 5);
+        if (play.type === 'comedy') volumeCredits += Math.floor(perf.audience / 5);
 
-        result += ` ${play.name}: ${format(thisAmount / 100)} (${perf.audience}석)\n`;
+        result += `${play.name}: ${format.format(thisAmount / 100)} (${perf.audience}석)\n`;
         totalAmount += thisAmount;
     }
 
-    result += `총액: ${format(totalAmount / 100)}\n`;
+    // format을 함수로 호출하는 대신 .format() 메소드 사용했습니다.
+    result += `총액: ${format.format(totalAmount / 100)}\n`;
     result += `적립 포인트: ${volumeCredits}점\n`;
     return result;
 }
