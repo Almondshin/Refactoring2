@@ -395,7 +395,7 @@ public class BaseStatementTest {
     }
 
     @Test
-    @RefactoringStage("statementRefactored3")
+    @RefactoringStage("Refactored3")
     void 리팩토링_3차_동작() {
         String result = statementRefactored3(invoice);
         System.out.println("\n3차 리팩토링 결과:\n" + result);
