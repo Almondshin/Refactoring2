@@ -1,6 +1,7 @@
 // import { statement } from './base.js';
 // import { statement } from './refactoring/refactoring1.js';
-import { statement } from './refactoring/refactoring2.js';
+// import { statement } from './refactoring/refactoring2.js';
+import { statement } from './refactoring/refactoring3.js';
 import test from 'node:test';
 import assert from 'node:assert';
 

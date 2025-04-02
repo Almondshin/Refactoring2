@@ -275,7 +275,99 @@ public class BaseStatementTest {
         int volumeCredits;
     }
 
+    /**
+     * 3차 리팩토링: JavaScript refactoring3.js 기반
+     * - 다형성을 이용한 서브클래스로 공연별 계산 책임 분리
+     * - PerformanceCalculator 상속 구조 활용 (Tragedy, Comedy)
+     */
+    private String statementRefactored3(Invoice invoice) {
+        StringBuilder result = new StringBuilder();
+        result.append(String.format("청구 내역 (고객명: %s)\n", invoice.getCustomer()));
 
+        long totalAmount = 0;
+        int totalVolumeCredits = 0;
+
+        for (Performance perf : invoice.getPerformances()) {
+            Play play = plays.get(perf.getPlayID());
+            PerformanceCalculator calculator = createCalculator(perf, play);
+
+            long amount = calculator.amount();
+            int credits = calculator.volumeCredits();
+
+            result.append(String.format("%s: %s (%d석)\n",
+                    play.getName(),
+                    usd(amount),
+                    perf.getAudience()));
+
+            totalAmount += amount;
+            totalVolumeCredits += credits;
+        }
+
+        result.append(String.format("총액: %s\n", usd(totalAmount)));
+        result.append(String.format("적립 포인트: %d점\n", totalVolumeCredits));
+
+        return result.toString();
+    }
+
+    abstract class PerformanceCalculator {
+        protected final BaseStatementTest.Performance performance;
+        protected final BaseStatementTest.Play play;
+
+        public PerformanceCalculator(BaseStatementTest.Performance performance, BaseStatementTest.Play play) {
+            this.performance = performance;
+            this.play = play;
+        }
+
+        public abstract long amount();
+
+        public int volumeCredits() {
+            return Math.max(performance.getAudience() - 30, 0);
+        }
+    }
+
+    class TragedyCalculator extends PerformanceCalculator {
+        public TragedyCalculator(BaseStatementTest.Performance performance, BaseStatementTest.Play play) {
+            super(performance, play);
+        }
+
+        @Override
+        public long amount() {
+            long result = 40000;
+            if (performance.getAudience() > 30) {
+                result += 1000 * (performance.getAudience() - 30);
+            }
+            return result;
+        }
+    }
+
+    class ComedyCalculator extends PerformanceCalculator {
+        public ComedyCalculator(BaseStatementTest.Performance performance, BaseStatementTest.Play play) {
+            super(performance, play);
+        }
+
+        @Override
+        public long amount() {
+            long result = 30000;
+            if (performance.getAudience() > 20) {
+                result += 10000 + 500 * (performance.getAudience() - 20);
+            }
+            result += 300 * performance.getAudience();
+            return result;
+        }
+
+        @Override
+        public int volumeCredits() {
+            return super.volumeCredits() + (performance.getAudience() / 5);
+        }
+    }
+
+    private PerformanceCalculator createCalculator(Performance perf, Play play) {
+        return switch (play.getType()) {
+            case "tragedy" -> new TragedyCalculator(perf, play);
+            case "comedy" -> new ComedyCalculator(perf, play);
+            default -> throw new IllegalArgumentException("알 수 없는 장르: " + play.getType());
+        };
+    }
 
 
     @Test
@@ -302,6 +394,15 @@ public class BaseStatementTest {
         assertStatementContains(result);
     }
 
+    @Test
+    @RefactoringStage("CalculatorSubclass")
+    void 리팩토링_3차_동작() {
+        String result = statementRefactored3(invoice);
+        System.out.println("\n3차 리팩토링 결과:\n" + result);
+        assertStatementContains(result);
+    }
+
+
     private void assertStatementContains(String result) {
         assertTrue(result.contains("청구 내역 (고객명: BigCo)"), "고객명이 포함되어야 함");
         assertTrue(result.contains("Hamlet: $650.00 (55석)"), "Hamlet 공연 정보가 정확해야 함");
@@ -310,7 +411,6 @@ public class BaseStatementTest {
         assertTrue(result.contains("총액: $1,730.00"), "총액이 정확해야 함");
         assertTrue(result.contains("적립 포인트: 47점"), "적립 포인트가 정확해야 함");
     }
-
 
 
     // Play 클래스 - 연극 정보
