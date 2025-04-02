@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 @ExtendWith(RefactoringStageExtension.class)
 public class BaseStatementTest {
 
@@ -184,19 +186,131 @@ public class BaseStatementTest {
         return result;
     }
 
+    /**
+     * 2차 리팩토링: JavaScript refactoring2.js 기반
+     * - 계산 단계와 포맷팅 단계 분리
+     * - 추가 모듈화 진행
+     */
+    private String statementRefactored2(Invoice invoice){
+        StatementData data = createStatementData(invoice, plays);
+        return renderPlainText(data);
+    }
+    private String renderPlainText(StatementData data) {
+        StringBuilder result = new StringBuilder();
+        result.append(String.format("청구 내역 (고객명: %s)\n", data.customer));
+
+        for (EnrichedPerformance ep : data.performances) {
+            result.append(String.format("%s: %s (%d석)\n",
+                    ep.play.getName(),
+                    usd(ep.amount),
+                    ep.performance.getAudience()));
+        }
+
+        result.append(String.format("총액: %s\n", usd(data.totalAmount)));
+        result.append(String.format("적립 포인트: %d점\n", data.totalVolumeCredits));
+        return result.toString();
+    }
+
+
+    private StatementData createStatementData(Invoice invoice, Map<String, Play> plays) {
+        StatementData data = new StatementData();
+        data.customer = invoice.getCustomer();
+        data.performances = invoice.getPerformances().stream()
+                .map(perf -> enrich(perf, plays))
+                .toList();
+        data.totalAmount = data.performances.stream().mapToLong(p -> p.amount).sum();
+        data.totalVolumeCredits = data.performances.stream().mapToInt(p -> p.volumeCredits).sum();
+        return data;
+    }
+
+    private EnrichedPerformance enrich(Performance perf, Map<String, Play> plays) {
+        EnrichedPerformance ep = new EnrichedPerformance();
+        ep.performance = perf;
+        ep.play = plays.get(perf.getPlayID());
+        ep.amount = amountFor(ep);
+        ep.volumeCredits = volumeCreditsFor(ep);
+        return ep;
+    }
+
+    private long amountFor(EnrichedPerformance ep) {
+        long result = 0;
+        switch (ep.play.getType()) {
+            case "tragedy":
+                result = 40000;
+                if (ep.performance.getAudience() > 30) {
+                    result += 1000 * (ep.performance.getAudience() - 30);
+                }
+                break;
+            case "comedy":
+                result = 30000;
+                if (ep.performance.getAudience() > 20) {
+                    result += 10000 + 500 * (ep.performance.getAudience() - 20);
+                }
+                result += 300 * ep.performance.getAudience();
+                break;
+            default:
+                throw new IllegalArgumentException("알 수 없는 장르: " + ep.play.getType());
+        }
+        return result;
+    }
+
+    private int volumeCreditsFor(EnrichedPerformance ep) {
+        int result = Math.max(ep.performance.getAudience() - 30, 0);
+        if ("comedy".equals(ep.play.getType())) {
+            result += ep.performance.getAudience() / 5;
+        }
+        return result;
+    }
+
+    static class StatementData {
+        String customer;
+        List<EnrichedPerformance> performances;
+        long totalAmount;
+        int totalVolumeCredits;
+    }
+    static class EnrichedPerformance {
+        Performance performance;
+        Play play;
+        long amount;
+        int volumeCredits;
+    }
+
+
+
+
     @Test
     @RefactoringStage("Before")
     void 리팩토링_전_동작() {
         String result = statement(invoice);
         System.out.println("\n리팩토링 전 결과:\n" + result);
+        assertStatementContains(result);
     }
 
     @Test
     @RefactoringStage("Refactored1")
     void 리팩토링_1차_동작() {
         String result = statementRefactored1(invoice);
-        System.out.println("\n리팩토링 전 결과:\n" + result);
+        System.out.println("\n1차 리팩토링 결과:\n" + result);
+        assertStatementContains(result);
     }
+
+    @Test
+    @RefactoringStage("Refactored2")
+    void 리팩토링_2차_동작() {
+        String result = statementRefactored2(invoice);
+        System.out.println("\n2차 리팩토링 결과:\n" + result);
+        assertStatementContains(result);
+    }
+
+    private void assertStatementContains(String result) {
+        assertTrue(result.contains("청구 내역 (고객명: BigCo)"), "고객명이 포함되어야 함");
+        assertTrue(result.contains("Hamlet: $650.00 (55석)"), "Hamlet 공연 정보가 정확해야 함");
+        assertTrue(result.contains("As You Like It: $580.00 (35석)"), "As You Like It 공연 정보가 정확해야 함");
+        assertTrue(result.contains("Othello: $500.00 (40석)"), "Othello 공연 정보가 정확해야 함");
+        assertTrue(result.contains("총액: $1,730.00"), "총액이 정확해야 함");
+        assertTrue(result.contains("적립 포인트: 47점"), "적립 포인트가 정확해야 함");
+    }
+
 
 
     // Play 클래스 - 연극 정보
