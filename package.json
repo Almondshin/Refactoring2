@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node --test src/test/javascript/org/refactoring/patterns/Refactoring.test.js"
+    "test": "mocha src/test/javascript/org/refactoring/patterns/maketest/test.js --grep '^province '"
   },
   "type": "module",
   "keywords": [],
@@ -11,6 +11,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "jest": "^29.7.0"
+    "mocha": "^10.2.0"
   }
 }

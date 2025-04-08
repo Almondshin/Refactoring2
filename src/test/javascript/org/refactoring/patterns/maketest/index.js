@@ -103,3 +103,5 @@ function sampleProvinceData() {
         price: 20,
     };
 }
+
+export { Province, sampleProvinceData };
