@@ -243,3 +243,206 @@ BUILD SUCCESSFUL in 2s
 
 
 </details>
+
+
+<details>
+<summary><h3>ch6. 기본적인 리팩토링 기법</h3></summary>
+
+> 리팩터링의 핵심은 **작은 스텝**으로 진행하며, 테스트로 기능 변화가 없음을 확인하는 것이다.
+
+## 주요 리팩토링 기법
+
+###  변수 캡슐화
+- **설명**: 변수에 직접 접근하는 대신 getter/setter를 통해 캡슐화하여 내부 상태를 보호하고, 접근 제어를 강화한다. getter가 **복제본을 반환**하면 불변성을 보장해 스레드 안전성과 예측 가능성을 높인다.
+- **예제**:
+  ```java
+  public class Order {
+      private List<String> items = new ArrayList<>();
+
+      // 복제본 반환으로 불변성 보장
+      public List<String> getItems() {
+          return new ArrayList<>(items); // 방어적 복사
+          // 또는 return Collections.unmodifiableList(items); // 읽기 전용 래퍼
+      }
+
+      public void addItem(String item) {
+          items.add(item);
+      }
+  }
+  ```
+  ```java
+  // DTO로 불변 객체 설계
+  public record OrderDTO(String id, List<String> items) {
+      public OrderDTO {
+          items = List.copyOf(items); // 불변 컬렉션
+      }
+  }
+  ```
+- **실무 관점**:
+  - **장점**: 복제본을 반환하면 객체 내부 상태가 외부에서 바뀌는 걸 막을 수 있어서, 멀티스레드 환경이나 캐시처럼 공유되는 데이터에서는 안정성 측면에서 유리함. 도메인 설계에서도 값 자체가 바뀌면 안 되는 상황(예: 금융, 인증 토큰 등)에 잘 맞음.
+  - **단점**: 무조건 복제하면 성능 부담 생김. 특히 대용량 컬렉션을 매번 복사하게 되면 GC 압박도 커지고, 불필요한 오브젝트 생성을 유발해서 오히려 병목이 생기기도 함. 그래서 대부분의 REST API 서버처럼 요청-응답 단위 트랜잭션이 짧고, 공유 상태가 거의 없는 구조에서는 굳이 복제본 안 쓰는 게 보통임.
+  - **적용 기준**: 컬렉션(List, Map)을 반환할 땐 외부에서 수정될 가능성을 차단하려고 Collections.unmodifiableList()나 복사본 반환하는 경우가 많음. 반면에 도메인 객체는 애초에 불변으로 설계하는 게 일반적이라 record나 Lombok의 @Value 같은 걸로 처리함.
+    ```java
+    @Service
+    public class UserService {
+        public UserDTO getUser(String id) {
+            User user = userRepository.findById(id).orElseThrow();
+            return new UserDTO(user.getId(), user.getName()); // 복사본 반환
+        }
+    }
+    ```
+  - **팁**: 복제할지 말지는 팀 컨벤션으로 정해두는 게 좋음. 예: "컬렉션은 무조건 불변 래퍼로 감싸기"처럼 룰을 정해두면 혼선 줄일 수 있음. 그리고 진짜 민감한 경우엔 JMeter 같은 걸로 성능 체크해서 결정하는 게 안정적.
+
+### 매개변수 객체 만들기
+- **설명**: 관련 있는 여러 개의 파라미터(예: startDate, endDate, customerId)를 하나의 객체로 묶어서 가독성 높이고, 검증 로직도 같이 담아서 재사용성과 안정성 챙기는 방식. 특히 파라미터가 3개 이상 넘어가면 객체로 만드는것을 추천
+- **예제**:
+  ```java
+  // 리팩터링 전
+  public BigDecimal calculateInvoice(LocalDate startDate, LocalDate endDate, String customerId) {
+      // 계산 로직
+      return BigDecimal.ZERO;
+  }
+
+  // 리팩터링 후: 매개변수 객체 사용
+  public record InvoiceParameters(LocalDate startDate, LocalDate endDate, String customerId) {
+      public InvoiceParameters {
+          Objects.requireNonNull(startDate, "startDate must not be null");
+          Objects.requireNonNull(endDate, "endDate must not be null");
+          Objects.requireNonNull(customerId, "customerId must not be null");
+      }
+  }
+
+  public BigDecimal calculateInvoice(InvoiceParameters params) {
+      // 계산 로직
+      return BigDecimal.ZERO;
+  }
+  ```
+  ```java
+  public record CreateOrderRequest(String customerId, LocalDate orderDate, BigDecimal amount) {
+      public CreateOrderRequest {
+          Objects.requireNonNull(customerId, "customerId must not be null");
+          Objects.requireNonNull(orderDate, "orderDate must not be null");
+          Objects.requireNonNull(amount, "amount must not be null");
+      }
+  }
+
+  @RestController
+  public class OrderController {
+      @PostMapping("/orders")
+      public ResponseEntity<?> createOrder(@RequestBody CreateOrderRequest request) {
+          // 주문 처리
+          return ResponseEntity.ok().build();
+      }
+  }
+  ```
+- **실무 관점**:
+  - **장점**: 타입 안정성과 도메인 의미 명확화(예: `String` 대신 `UserName`). Spring REST API에서 DTO로 파라미터 간소화.
+  - **한계**: 단순 메서드에서는 오버엔지니어링. 객체 생성 비용은 고성능 요구사항(예: Spring Batch)에서 부담.
+  - **적용 기준**: 파라미터 3개 이상이거나 여러 메서드에서 반복되면 객체로 묶음. 공통 검증 로직은 `ValidationUtils`로 분리.
+    ```java
+    public class ValidationUtils {
+        public static boolean isValidName(String value) {
+            return value != null && value.matches("[a-zA-Z]+");
+        }
+    }
+    ```
+  - **실무 사례**: DDD에서 Value Object(예: `Name`, `OrderId`)로 도메인 모델 강화. 유저/그룹 이름 검증 예시:
+    ```java
+    public record Name(String value) {
+        public Name {
+            if (value == null || !value.matches("[a-zA-Z]+")) {
+                throw new IllegalArgumentException("Invalid name");
+            }
+        }
+    }
+
+    @Service
+    public class ValidationService {
+        public boolean validateName(Name name) {
+            return true; // 검증은 생성자에서 처리
+        }
+    }
+    ```
+  - **팁**: IntelliJ의 "Extract Parameter Object"로 리팩토링 시도, 테스트로 안전성 검증. 팀 내 DTO 사용 기준을 따름.
+
+### 단계 쪼개기 (Split Phase)
+- **설명**: 복잡한 로직을 명확한 단계로 분리해 가독성과 유지보수성을 높인다. 중간 데이터 구조를 사용해 단계 간 데이터 전달 명확화.
+- **예제**:
+  ```java
+  public class Compiler {
+      public String compile(String source) {
+          List<String> tokens = tokenize(source); // 1단계: 토큰화
+          SyntaxTree tree = parse(tokens);       // 2단계: 구문 분석
+          return generate(tree);                 // 3단계: 코드 생성
+      }
+
+      private List<String> tokenize(String source) { /* 토큰화 로직 */ return List.of(); }
+      private SyntaxTree parse(List<String> tokens) { /* 파싱 로직 */ return new SyntaxTree(); }
+      private String generate(SyntaxTree tree) { /* 코드 생성 로직 */ return ""; }
+  }
+
+  record SyntaxTree() {}
+  ```
+- **실무 관점**:
+  - **장점**: 단계별 디버깅 용이, 복잡한 로직(예: 데이터 파이프라인)에서 유용.
+  - **한계**: 중간 데이터 구조의 복잡성 증가. 단순 로직에서는 불필요한 추상화.
+  - **적용 기준**: 로직이 여러 변환 단계를 거치거나, 테스트/디버깅이 어려운 경우 적용.
+  - **실무 사례**: Spring Batch의 ETL(Extract-Transform-Load) 프로세스에서 단계 분리.
+    ```java
+    @Component
+    public class DataProcessor {
+        public List<ProcessedData> process(List<RawData> rawData) {
+            List<ExtractedData> extracted = extract(rawData); // 1단계
+            return transform(extracted);                      // 2단계
+        }
+
+        private List<ExtractedData> extract(List<RawData> rawData) { /* 추출 */ return List.of(); }
+        private List<ProcessedData> transform(List<ExtractedData> data) { /* 변환 */ return List.of(); }
+    }
+    ```
+  - **팁**: 중간 데이터 구조는 `record`로 간결히 정의, 테스트로 각 단계 검증.
+
+## 스터디 세션 논의 포인트
+- **테스트 기반 안정성**: JUnit 테스트로 리팩터링 전/후 동일 동작 확인, 작은 스텝 진행 강조.
+- **IDE 활용**: IntelliJ 단축키(Alt+Shift+R)로 작업 효율성 증대.
+- **이름 짓기**: 추출된 함수/변수에 적절한 이름 부여로 가독성과 의도 전달.
+- **변수 캡슐화**: 복제본 반환(Immutable) vs. 원본 참조, 성능과 불변성 트레이드오프.
+- **매개변수 객체 만들기**: 타입 안정성 vs. 불필요한 데이터 전달, 도메인 특화 vs. 범용성 판단.
+- **단계 쪼개기**: 중간 데이터 구조의 복잡성 문제, 컴파일러 같은 복잡 로직에서 유용.
+- **리팩터링 기준**: 메서드 라인 수 같은 기계적 기준보다 코드 변화 후 판단, 테스트로 롤백 가능.
+
+## 실습 예제 개요
+- **목표**: 책의 JavaScript 예제를 Java로 변환, JUnit 테스트로 검증.
+- **대상**: 송장 계산, 데이터 검증 등 간단한 비즈니스 로직에 리팩터링 기법 적용.
+- **구성**:
+  - 함수 추출: 복잡한 계산 로직을 메서드로 분리.
+  - 변수 캡슐화: 내부 상태 보호, getter로 복제본 반환.
+  - 매개변수 객체: 연관 파라미터를 DTO/Value Object로 묶음.
+  - 단계 쪼개기: 데이터 처리 파이프라인을 단계별로 분리.
+- **예제 코드**:
+  ```java
+  // 송장 계산 리팩터링
+  public class InvoiceService {
+      public BigDecimal calculate(InvoiceParameters params) {
+          // 단계 쪼개기 적용
+          AmountData amountData = computeAmount(params);
+          return adjustAmount(amountData);
+      }
+
+      private AmountData computeAmount(InvoiceParameters params) { /* 계산 */ return new AmountData(); }
+      private BigDecimal adjustAmount(AmountData data) { /* 조정 */ return BigDecimal.ZERO; }
+  }
+
+  record InvoiceParameters(LocalDate startDate, LocalDate endDate, String customerId) {}
+  record AmountData() {}
+  ```
+  
+- **테스트 필수**: JUnit으로 리팩터링 전/후 동일 동작 보장.
+- **작은 스텝**: 큰 변경 대신 작은 단위로 리팩터링 후 테스트.
+- **도메인 중심**: 매개변수 객체와 캡슐화는 도메인 의미 강화.
+- **성능 고려**: 복제본 반환, 객체 생성은 JMeter/Gatling으로 검증.
+- **팀 컨벤션**: 리팩토링 기준(DTO 사용, 복제본 반환)을 팀 내 합의.
+- **IDE 활용**: IntelliJ의 Extract Method, Extract Parameter Object로 효율성 극대화.
+
+
+</details>
