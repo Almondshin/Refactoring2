@@ -445,3 +445,241 @@ BUILD SUCCESSFUL in 2s
 
 
 </details>
+
+<details>
+<summary><h3>ch7. 캡슐화</h3></summary>
+
+### 시나리오
+
+> 객체 내부의 데이터와 구현 세부 사항을 외부로부터 숨기고, 정의된 인터페이스를 통해 상호작용하는 캡슐화 기법을 다룬다.
+
+- **목표**: 데이터와 로직을 캡슐화하여 의존성을 줄이고, 변경의 영향을 최소화하며, 코드의 일관성과 무결성 보장.
+- **주요 기법**:
+  - 레코드 캡슐화: 단순 데이터 구조를 객체로 감싸 접근 제어.
+  - 컬렉션 캡슐화: 컬렉션 직접 노출 대신 메서드로 관리.
+  - 기본형을 객체로: 매직 스트링/넘버를 값 객체로 변환.
+  - 위임 숨기기: 내부 객체 참조를 메서드로 감춤.
+  - 클래스 추출/인라인: 로직을 적절히 분리하거나 통합.
+
+### 리팩터링 과정
+
+7장은 캡슐화를 통해 객체의 내부 상태를 보호하고, 외부 인터페이스를 명확히 하는 과정을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다.
+
+#### 1. 레코드 캡슐화
+
+- **목표**: JSON과 유사한 데이터 구조(레코드)를 객체로 감싸 접근 제어.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 맵으로 데이터 노출
+    public class Customer {
+        private Map<String, String> data = new HashMap<>();
+        public Map<String, String> getData() { return data; }
+    }
+    
+    // 리팩터링 후: 레코드 캡슐화
+    public class Customer {
+        private final String name;
+        private final String id;
+    
+        public Customer(String name, String id) {
+            this.name = name;
+            this.id = id;
+        }
+    
+        public String getName() { return name; }
+        public String getId() { return id; }
+    }
+    ```
+
+- **효과**: 데이터 접근을 getter로 제한, 내부 구조 변경 시 외부 영향 최소화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testCustomerEncapsulation() {
+        Customer customer = new Customer("BigCo", "123");
+        assertEquals("BigCo", customer.getName());
+        assertEquals("123", customer.getId());
+    }
+    ```
+
+
+#### 2. 컬렉션 캡슐화
+
+- **목표**: 컬렉션 직접 노출 대신 메서드로 추가/삭제 관리, 불변성 보장.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 컬렉션 직접 노출
+    public class Order {
+        private List<String> items = new ArrayList<>();
+        public List<String> getItems() { return items; }
+    }
+    
+    // 리팩터링 후: 컬렉션 캡슐화
+    public class Order {
+        private final List<String> items = new ArrayList<>();
+    
+        public List<String> getItems() {
+            return Collections.unmodifiableList(items); 
+        }
+    
+        public void addItem(String item) {
+            items.add(item);
+        }
+    
+        public void removeItem(String item) {
+            items.remove(item);
+        }
+    }
+    ```
+
+- **효과**: 외부에서 컬렉션 수정 불가, 데이터 무결성 보장.
+- **테스트**:
+
+    ```java
+    @Test
+    void testCollectionEncapsulation() {
+        Order order = new Order();
+        order.addItem("item1");
+        assertEquals(List.of("item1"), order.getItems());
+        assertThrows(UnsupportedOperationException.class, () -> order.getItems().add("item2"));
+    }
+    ```
+
+- **실무 팁**: `Collections.unmodifiableList()` 사용으로 간단히 불변성 보장. 대용량 데이터는 복사본 반환 대신 프록시 고려.
+
+#### 3. 기본형을 객체로 바꾸기
+
+- **목표**: 매직 스트링/넘버를 값 객체로 변환해 가독성과 타입 안정성 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 매직 스트링 사용
+    public class Play {
+        private String type; // "tragedy", "comedy"
+        public String getType() { return type; }
+    }
+    
+    // 리팩터링 후: Enum 사용
+    public enum PlayType {
+        TRAGEDY, COMEDY
+    }
+    
+    public class Play {
+        private final PlayType type;
+    
+        public Play(PlayType type) {
+            this.type = type;
+        }
+    
+        public PlayType getType() { return type; }
+    }
+    ```
+
+- **효과**: 컴파일 타임 오류 감지, 코드 가독성 향상.
+- **테스트**:
+
+    ```java
+    @Test
+    void testPlayType() {
+        Play play = new Play(PlayType.TRAGEDY);
+        assertEquals(PlayType.TRAGEDY, play.getType());
+    }
+    ```
+
+
+#### 4. 내부 객체 참조 감추기
+
+- **목표**: 내부 객체 참조를 노출하지 않고 메서드로 감춰 의존성 관리.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 내부 객체 노출
+    public class Person {
+        private Department department;
+        public Department getDepartment() { return department; }
+    }
+    
+    // 리팩터링 후: 내부 객체 참조 감추기
+    public class Person {
+        private final Department department;
+    
+        public Person(Department department) {
+            this.department = department;
+        }
+    
+        public String getManager() {
+            return department.getManager();
+        }
+    }
+    
+    public class Department {
+        private final String manager;
+        public Department(String manager) { this.manager = manager; }
+        public String getManager() { return manager; }
+    }
+    ```
+
+- **효과**: 내부 구조 변경 시 외부 영향 최소화, 의존성 감소.
+- **테스트**:
+
+    ```java
+    @Test
+    void testDelegationHiding() {
+        Department dept = new Department("John");
+        Person person = new Person(dept);
+        assertEquals("John", person.getManager());
+    }
+    ```
+
+- **실무 팁**: 과도한 위임은 중계자 역할 증가로 복잡성 유발. 중계자 제거와 균형 필요.
+
+### 실무 관점
+
+- **캡슐화의 장점**:
+  - 객체 간 의존성 감소, 변경 영향 최소화.
+  - 컬렉션 캡슐화로 데이터 무결성 보장.
+  - 값 객체로 코드 가독성과 안정성 강화.
+- **실무 한계**:
+  - 무상태 서비스(예: Spring REST API)에서는 캡슐화 적용 제한.
+  - 복제본 반환은 성능 문제 유발 가능, JMeter로 검증 권장.
+  - 자바스크립트 예제는 자바 환경에서 직관적이지 않을 수 있음.
+- **적용 기준**:
+  - 컬렉션 반환 시 `Collections.unmodifiableList()` 기본 적용.
+  - DTO/값 객체로 도메인 의미 강화, 3개 이상 파라미터는 객체로 묶음.
+  - 위임 숨기기는 내부 구조 변경 빈도 높은 경우 유리.
+- **팀 컨벤션**:
+  - 불변성 처리(복제본 vs. 프록시) 기준 명확화.
+  - 리팩터링 후 테스트로 롤백 가능성 확보.
+- **IDE 활용**: IntelliJ의 "Encapsulate Fields", "Extract Class"로 작업 효율화.
+
+### 테스트 기반 안정성
+
+- JUnit으로 리팩터링 전/후 동일 동작 검증.
+- 경계 조건(빈 컬렉션, 잘못된 입력) 테스트로 안정성 강화.
+- `@RefactoringStage` 애너테이션으로 단계별 결과 비교.
+
+### 실행 결과 예시
+
+```bash
+> Task :test
+=== Refactoring Step: "RecordEncapsulation" Test Start ===
+Customer name: BigCo, ID: 123
+실행 시간: 10ms
+=== Refactoring Step: "CollectionEncapsulation" Test Start ===
+Order items: [item1]
+UnsupportedOperationException: Cannot modify immutable list
+실행 시간: 8ms
+=== Refactoring Step: "PrimitiveToObject" Test Start ===
+Play type: TRAGEDY
+실행 시간: 5ms
+=== Refactoring Step: "HideDelegation" Test Start ===
+Manager: John
+실행 시간: 6ms
+BUILD SUCCESSFUL in 1s
+```
+
+
+</details>
