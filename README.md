@@ -548,7 +548,7 @@ BUILD SUCCESSFUL in 2s
     }
     ```
 
-- **실무 팁**: `Collections.unmodifiableList()` 사용으로 간단히 불변성 보장. 대용량 데이터는 복사본 반환 대신 프록시 고려.
+- `Collections.unmodifiableList()` 사용으로 간단히 불변성 보장. 대용량 데이터는 복사본 반환 대신 프록시 고려.
 
 #### 3. 기본형을 객체로 바꾸기
 
@@ -634,7 +634,7 @@ BUILD SUCCESSFUL in 2s
     }
     ```
 
-- **실무 팁**: 과도한 위임은 중계자 역할 증가로 복잡성 유발. 중계자 제거와 균형 필요.
+- 과도한 위임은 중계자 역할 증가로 복잡성 유발. 중계자 제거와 균형 필요.
 
 ### 실무 관점
 
@@ -1013,3 +1013,366 @@ BUILD SUCCESSFUL in 1s
 
 </details>
 
+
+<details>
+<summary><h3>ch9. 데이터 조직화</h3></summary>
+
+### 시나리오
+
+> 데이터 구조를 재조직화하여 코드의 가독성, 유지보수성, 도메인 의미를 강화하는 리팩터링 기법을 다룬다.
+
+- **목표**: 변수, 필드, 데이터 구조를 명확히 정리하여 의도를 드러내고, 변경에 유연한 코드를 설계.
+- **주요 기법**:
+  - 변수 쪼개기: 단일 변수의 다중 책임 분리.
+  - 필드 이름 바꾸기: 의미 명확화.
+  - 파생 변수를 질의 함수로 바꾸기: 계산 로직 캡슐화.
+  - 참조를 값으로/값을 참조로 바꾸기: 불변성/공유 관리.
+  - 매직 리터럴 바꾸기: 상수나 Enum으로 대체.
+
+### 리팩터링 과정
+
+9장은 데이터 구조를 재조직화하여 코드의 의도를 명확히 하고, 유지보수성을 높이는 과정을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다. 
+
+#### 1. 변수 쪼개기
+
+- **목표**: 단일 변수가 여러 목적으로 사용될 때, 각 목적별로 변수 분리.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 단일 변수로 다중 책임
+    public class Rectangle {
+        private double length;
+        private double width;
+    
+        public Rectangle(double length, double width) {
+            this.length = length;
+            this.width = width;
+        }
+    
+        public String getDescription() {
+            double temp = 0;
+            temp = 2 * (length + width); // 둘레 계산
+            double perimeter = temp;
+            temp = length * width; // 면적 계산
+            double area = temp;
+            return "Perimeter: " + perimeter + ", Area: " + area;
+        }
+    }
+    
+    // 리팩터링 후: 변수 쪼개기
+    public class Rectangle {
+        private double length;
+        private double width;
+    
+        public Rectangle(double length, double width) {
+            this.length = length;
+            this.width = width;
+        }
+    
+        public String getDescription() {
+            double perimeter = 2 * (length + width);
+            double area = length * width;
+            return "Perimeter: " + perimeter + ", Area: " + area;
+        }
+    }
+    ```
+
+- **효과**: 변수 역할 명확화, 디버깅 용이, 함수 추출 준비.
+- **테스트**:
+
+    ```java
+    @Test
+    void testSplitVariable() {
+        Rectangle rectangle = new Rectangle(10, 5);
+        assertEquals("Perimeter: 30.0, Area: 50.0", rectangle.getDescription());
+    }
+    ```
+
+- IntelliJ의 "Split Variable" 기능 활용, 변수명은 도메인 의미 반영(예: `temp` → `perimeter`).
+
+#### 2. 필드 이름 바꾸기
+
+- **목표**: 모호한 필드명을 도메인에 맞게 변경하여 가독성 향상.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 모호한 이름
+    public class Customer {
+        private String nm;
+    
+        public Customer(String nm) { this.nm = nm; }
+        public String getNm() { return nm; }
+    }
+    
+    // 리팩터링 후: 명확한 이름
+    public class Customer {
+        private String name;
+    
+        public Customer(String name) { this.name = name; }
+        public String getName() { return name; }
+    }
+    ```
+
+- **효과**: 도메인 의미 강화, 코드 이해도 증가.
+- **테스트**:
+
+    ```java
+    @Test
+    void testRenameField() {
+        Customer customer = new Customer("Alice");
+        assertEquals("Alice", customer.getName());
+    }
+    ```
+
+- DDD 유비쿼터스 언어 기반 이름 선정, IntelliJ "Rename" 기능 사용.
+
+#### 3. 파생 변수를 질의 함수로 바꾸기
+
+- **목표**: 저장된 계산 값을 실시간 질의로 대체하여 데이터 일관성 보장.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 파생 변수 저장
+    public class Order {
+        private List<Item> items;
+        private double total;
+    
+        public Order(List<Item> items) {
+            this.items = items;
+            this.total = calculateTotal();
+        }
+    
+        private double calculateTotal() {
+            return items.stream().mapToDouble(Item::getPrice).sum();
+        }
+    
+        public double getTotal() { return total; }
+    
+        public void addItem(Item item) {
+            items.add(item);
+            total = calculateTotal(); // 수동 업데이트, 오류 가능성
+        }
+    }
+    
+    // 리팩터링 후: 질의 함수
+    public class Order {
+        private List<Item> items;
+    
+        public Order(List<Item> items) {
+            this.items = items;
+        }
+    
+        public double getTotal() {
+            return items.stream().mapToDouble(Item::getPrice).sum();
+        }
+    
+        public void addItem(Item item) {
+            items.add(item);
+        }
+    }
+    ```
+
+- **효과**: 데이터 일관성 보장, 업데이트 오류 방지.
+- **테스트**:
+
+    ```java
+    @Test
+    void testDerivedToQuery() {
+        List<Item> items = Arrays.asList(new Item(10), new Item(20));
+        Order order = new Order(items);
+        assertEquals(30.0, order.getTotal(), 0.01);
+        order.addItem(new Item(30));
+        assertEquals(60.0, order.getTotal(), 0.01);
+    }
+    ```
+
+- 성능 문제 시 캐싱 추가, JMeter로 측정 권장.
+
+#### 4. 참조를 값으로 바꾸기
+
+- **목표**: 공유 참조를 불변 값 객체로 전환하여 사이드 이펙트 방지.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 가변 참조
+    public class Money {
+        private int amount;
+    
+        public Money(int amount) { this.amount = amount; }
+        public void setAmount(int amount) { this.amount = amount; }
+        public int getAmount() { return amount; }
+    }
+    
+    // 리팩터링 후: 불변 값 객체
+    public record Money(int amount) {
+        public Money {
+            if (amount < 0) throw new IllegalArgumentException("Amount cannot be negative");
+        }
+    }
+    ```
+
+- **효과**: 불변성 보장, 멀티스레드 안정성 강화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReferenceToValue() {
+        Money money = new Money(100);
+        assertEquals(100, money.amount());
+        assertThrows(IllegalArgumentException.class, () -> new Money(-1));
+    }
+    ```
+
+- Java `record`로 간결 구현, 금융/인증 데이터에 적합.
+
+#### 5. 값을 참조로 바꾸기
+
+- **목표**: 공유 상태 관리를 위해 값을 참조로 전환.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 값
+    public class User {
+        private String name;
+        private int id;
+    
+        public User(String name, int id) {
+            this.name = name;
+            this.id = id;
+        }
+    
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public int getId() { return id; }
+    }
+    
+    // 리팩터링 후: 참조
+    public class UserRepository {
+        private static Map<Integer, User> users = new HashMap<>();
+    
+        public static User get(int id) { return users.get(id); }
+        public static void save(User user) { users.put(user.getId(), user); }
+    }
+    
+    public class User {
+        private String name;
+        private int id;
+    
+        public User(String name, int id) {
+            this.name = name;
+            this.id = id;
+        }
+    
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public int getId() { return id; }
+    }
+    ```
+
+- **효과**: 중앙 집중식 상태 관리, 업데이트 일관성 보장.
+- **테스트**:
+
+    ```java
+    @Test
+    void testValueToReference() {
+        User user = new User("Alice", 1);
+        UserRepository.save(user);
+        assertEquals("Alice", UserRepository.get(1).getName());
+    
+        UserRepository.get(1).setName("Bob");
+        assertEquals("Bob", UserRepository.get(1).getName());
+    }
+    ```
+
+- Spring Data JPA의 Repository 패턴과 유사, 공유 상태 관리에 유용.
+
+#### 6. 매직 리터럴 바꾸기
+
+- **목표**: 하드코딩된 값을 상수로 대체하여 의미 명확화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 매직 리터럴
+    public class Physics {
+        public double calculateGravityForce(double mass) {
+            return mass * 9.81; // 지구 중력 가속도
+        }
+    }
+    
+    // 리팩터링 후: 상수 사용
+    public class Physics {
+        private static final double STANDARD_GRAVITY = 9.81;
+    
+        public double calculateGravityForce(double mass) {
+            return mass * STANDARD_GRAVITY;
+        }
+    }
+    ```
+
+- **효과**: 코드 의도 명확, 수정 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceMagicLiteral() {
+        Physics physics = new Physics();
+        assertEquals(981.0, physics.calculateGravityForce(100), 0.01);
+    }
+    ```
+
+- Enum으로 상태/타입 관리, 상수는 `static final`로 정의.
+
+- **장점**:
+  - **가독성 향상**: 변수 쪼개기와 필드 이름 바꾸기로 도메인 의도 명확화.
+  - **데이터 일관성**: 질의 함수로 파생 데이터 최신 상태 유지.
+  - **불변성/공유 관리**: 값 객체로 사이드 이펙트 감소, 참조로 공유 상태 관리.
+  - **유지보수성**: 매직 리터럴 상수화로 수정 용이.
+- **한계**:
+  - 과도한 변수 쪼개기는 코드 복잡성 증가, 적절한 균형 필요.
+  - 참조/값 전환은 성능 고려, 대량 데이터는 프로파일링 필수.
+  - 팀원 간 이름 짓기 기준 상이, 유비쿼터스 언어 기반 통일 필요.
+- **적용 기준**:
+  - **변수 쪼개기**: 변수가 2개 이상 역할 수행 시 분리.
+  - **필드 이름**: DDD 유비쿼터스 언어 준수, 최소 3자 이상 명확성.
+  - **질의 함수**: 파생 데이터가 자주 변경될 경우 적용.
+  - **값 객체**: 불변성 필요한 도메인(예: 돈, ID)에 우선 적용.
+  - **참조 객체**: 공유 상태 관리 필요한 경우(예: 사용자 세션).
+  - **상수**: 하드코딩된 숫자/문자열은 즉시 상수화.
+- **팀 컨벤션**:
+  - 이름 짓기 규칙(예: `camelCase`, 도메인 용어 우선) 정의.
+  - 리팩터링 반대 시 전/후 비교 테스트로 설득.
+  - 상수/Enum 사용 기준(예: 하드코딩 금지) 정의.
+- **IDE 활용**: IntelliJ의 "Split Variable", "Rename", "Extract Method"로 작업 효율화.
+
+### 테스트 기반 안정성
+
+- JUnit으로 리팩터링 전/후 동일 동작 검증.
+- 경계 조건(빈 리스트, 잘못된 입력) 테스트로 안정성 강화.
+- `@RefactoringStage` 애너테이션으로 단계별 결과 비교.
+
+### 실행 결과 예시
+
+```bash
+> Task :test
+=== Refactoring Step: "SplitVariable" Test Start ===
+Description: Perimeter: 30.0, Area: 50.0
+실행 시간: 8ms
+=== Refactoring Step: "RenameField" Test Start ===
+Name: Alice
+실행 시간: 6ms
+=== Refactoring Step: "DerivedToQuery" Test Start ===
+Total: 30.0
+실행 시간: 7ms
+=== Refactoring Step: "ReferenceToValue" Test Start ===
+Amount: 100
+실행 시간: 5ms
+=== Refactoring Step: "ValueToReference" Test Start ===
+Name: Bob
+실행 시간: 6ms
+=== Refactoring Step: "ReplaceMagicLiteral" Test Start ===
+Force: 981.0
+실행 시간: 5ms
+BUILD SUCCESSFUL in 1s
+```
+
+</details>
