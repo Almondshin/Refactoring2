@@ -683,3 +683,333 @@ BUILD SUCCESSFUL in 1s
 
 
 </details>
+
+
+<details>
+<summary><h3>ch8. 기능 이동</h3></summary>
+
+### 시나리오
+
+> 코드의 함수, 필드, 문장 등을 적절한 위치로 이동하여 응집도를 높이고, 유지보수성을 강화하는 기능 이동 기법을 다룬다.
+
+- **목표**: 코드의 책임과 경계를 명확히 하고, 도메인 로직에 맞게 기능을 재배치하여 가독성과 재사용성을 높임.
+- **주요 기법**:
+  - 함수 옮기기: 함수를 더 적합한 클래스/모듈로 이동.
+  - 필드 옮기기: 필드를 적절한 클래스에 배치.
+  - 문장 슬라이드하기: 관련 코드 뭉치를 모아 추출 준비.
+  - 반복문 쪼개기: 단일 루프에서 여러 작업 분리.
+  - 반복문을 파이프라인으로 바꾸기: 루프를 스트림/파이프라인으로 변환.
+  - 죽은 코드 제거하기: 사용되지 않는 코드 삭제.
+
+### 리팩터링 과정
+
+8장은 함수, 필드, 문장 등을 적절한 위치로 이동하여 코드의 응집도와 가독성을 높이는 과정을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다. 대화에서 나온 주요 논의와 실무 적용 사례를 반영했다.
+
+#### 1. 함수 옮기기
+
+- **목표**: 함수를 호출 빈도나 도메인 책임에 따라 적합한 클래스/모듈로 이동.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: Account에서 이자율 계산
+    public class Account {
+        private double interestRate;
+    
+        public double calculateInterest(double amount) {
+            return amount * interestRate;
+        }
+    }
+    
+    // 리팩터링 후: AccountType으로 이동
+    public class Account {
+        private AccountType type;
+        public double calculateInterest(double amount) {
+            return type.calculateInterest(amount);
+        }
+    }
+    
+    public class AccountType {
+        private double interestRate;
+    
+        public double calculateInterest(double amount) {
+            return amount * interestRate;
+        }
+    }
+    ```
+
+- **효과**: 이자율 관리 책임을 `AccountType`으로 이동, 도메인 응집도 강화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testMoveFunction() {
+        AccountType type = new AccountType(0.05);
+        Account account = new Account(type);
+        assertEquals(5.0, account.calculateInterest(100.0));
+    }
+    ```
+
+- IntelliJ의 "Move Method" 단축키 활용, 도메인 주도 설계(DDD)에서 루트 애그리거트 경계 고려.
+
+#### 2. 필드 옮기기
+
+- **목표**: 필드를 더 관련성 높은 클래스에 배치, 도메인 로직 반영.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: Account에 이자율
+    public class Account {
+        private double interestRate;
+        public double getInterestRate() { return interestRate; }
+    }
+    
+    // 리팩터링 후: AccountType으로 이동
+    public class Account {
+        private AccountType type;
+        public double getInterestRate() { return type.getInterestRate(); }
+    }
+    
+    public class AccountType {
+        private double interestRate;
+        public double getInterestRate() { return interestRate; }
+    }
+    ```
+
+- **효과**: 이자율을 `AccountType`에서 관리, 추가 이자율 로직(예: 전략 패턴) 적용 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testMoveField() {
+        AccountType type = new AccountType(0.05);
+        Account account = new Account(type);
+        assertEquals(0.05, account.getInterestRate());
+    }
+    ```
+
+- 필드 이동 시 DDD의 애그리거트 경계 고민, 세터 대신 생성자/업데이트 메서드 권장.
+
+#### 3. 문장 슬라이드하기
+
+- **목표**: 관련 코드를 한 곳으로 모아 함수 추출 준비, 가독성 개선.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 흩어진 로직
+    public class Order {
+        public double calculateTotal(List<Item> items) {
+            double total = 0;
+            total += items.stream().mapToDouble(Item::getPrice).sum();
+            if (items.size() > 5) total *= 0.9; // 할인
+            return total;
+        }
+    }
+    
+    // 리팩터링 후: 문장 슬라이드
+    public class Order {
+        public double calculateTotal(List<Item> items) {
+            double baseTotal = items.stream().mapToDouble(Item::getPrice).sum();
+            double total = applyDiscount(baseTotal, items);
+            return total;
+        }
+    
+        private double applyDiscount(double total, List<Item> items) {
+            return items.size() > 5 ? total * 0.9 : total;
+        }
+    }
+    ```
+
+- **효과**: 할인 로직 분리, 추출 용이, CQS(Command-Query Separation) 준수.
+- **테스트**:
+
+    ```java
+    @Test
+    void testSlideStatements() {
+        List<Item> items = List.of(new Item(10), new Item(20), new Item(30));
+        Order order = new Order();
+        assertEquals(60.0, order.calculateTotal(items));
+    }
+    ```
+
+
+#### 4. 반복문 쪼개기
+
+- **목표**: 단일 루프에서 여러 작업을 분리, 책임 명확화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 단일 루프에서 다중 작업
+    public class Report {
+        public String generateReport(List<Order> orders) {
+            double total = 0;
+            int count = 0;
+            for (Order order : orders) {
+                total += order.getAmount();
+                count++;
+            }
+            return "Total: " + total + ", Count: " + count;
+        }
+    }
+    
+    // 리팩터링 후: 루프 분리
+    public class Report {
+        public String generateReport(List<Order> orders) {
+            double total = calculateTotal(orders);
+            int count = calculateCount(orders);
+            return "Total: " + total + ", Count: " + count;
+        }
+    
+        private double calculateTotal(List<Order> orders) {
+            return orders.stream().mapToDouble(Order::getAmount).sum();
+        }
+    
+        private int calculateCount(List<Order> orders) {
+            return orders.size();
+        }
+    }
+    ```
+
+- **효과**: 작업별 루프 분리, 가독성과 유지보수성 향상.
+- **테스트**:
+
+    ```java
+    @Test
+    void testSplitLoop() {
+        List<Order> orders = List.of(new Order(10), new Order(20));
+        Report report = new Report();
+        assertEquals("Total: 30.0, Count: 2", report.generateReport(orders));
+    }
+    ```
+
+- 성능 우려 시 JMeter로 측정, 100만 건 미만 데이터는 분리 권장.
+
+#### 5. 반복문을 파이프라인으로 바꾸기
+
+- **목표**: 루프를 스트림/파이프라인으로 변환, 선언적 코드로 전환.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 루프
+    public class Report {
+        public List<String> getHighValueOrders(List<Order> orders) {
+            List<String> result = new ArrayList<>();
+            for (Order order : orders) {
+                if (order.getAmount() > 100) {
+                    result.add(order.getName());
+                }
+            }
+            return result;
+        }
+    }
+    
+    // 리팩터링 후: 스트림
+    public class Report {
+        public List<String> getHighValueOrders(List<Order> orders) {
+            return orders.stream()
+                    .filter(order -> order.getAmount() > 100)
+                    .map(Order::getName)
+                    .collect(Collectors.toList());
+        }
+    }
+    ```
+
+- **효과**: 코드 간결, 의도 명확, 함수형 스타일로 전환.
+- **테스트**:
+
+    ```java
+    @Test
+    void testPipeline() {
+        List<Order> orders = List.of(new Order("A", 150), new Order("B", 50));
+        Report report = new Report();
+        assertEquals(List.of("A"), report.getHighValueOrders(orders));
+    }
+    ```
+
+- 과도한 체이닝 피하기, 중간 변수로 가독성 강화.
+
+#### 6. 죽은 코드 제거하기
+
+- **목표**: 사용되지 않는 코드를 제거, 코드베이스 간소화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 사용되지 않는 코드
+    public class Legacy {
+        public void oldMethod() {
+            // System.out.println("Deprecated");
+        }
+    }
+    
+    // 리팩터링 후: 제거
+    public class Legacy {
+        // oldMethod 제거
+    ```
+
+
+ხ  
+public void newMethod() {  
+// 새로운 로직  
+}  
+}
+
+````
+- **효과**: 코드 가독성 향상, 버전 관리(Git)로 히스토리 추적 가능.
+- **테스트**:
+```java
+@Test
+void testRemoveDeadCode() {
+    Legacy legacy = new Legacy();
+    legacy.newMethod(); // oldMethod 호출 없음
+    assertTrue(true); // 단순 동작 확인
+}
+````
+
+- Git 히스토리 신뢰, 필요 시 커밋 메시지에 이전 코드 참고 가이드 추가.
+
+### 실무 관점
+
+- **기능 이동의 장점**:
+  - 응집도 강화, 도메인 경계 명확화, 유지보수성 향상.
+  - 반복문 쪼개기/파이프라인으로 가독성 개선, 주석 감소.
+  - 죽은 코드 제거로 코드베이스 간소화, Git 활용.
+- **실무 한계**:
+  - 함수/필드 이동 기준 모호, 팀 컨벤션 필요.
+  - 과도한 스트림 체이닝은 가독성 저하, 중간 변수 활용.
+  - 반복문 쪼개기 성능 우려, 대량 데이터는 프로파일링 권장.
+- **적용 기준**:
+  - 함수 옮기기: 호출 빈도, 도메인 책임 기반 판단.
+  - 필드 옮기기: DDD 애그리거트 경계, 전략 패턴 고려.
+  - 파이프라인: 필터/맵 2~3개 이하로 제한, 함수 추출 병행.
+- **팀 컨벤션**:
+  - 이동 기준(예: "도메인 책임 우선") 명확화.
+  - 리팩터링 반대 시 비교 테스트/가독성 개선 증명.
+  - 유틸리티 함수는 문서화 및 팀 동의 필수.
+- **IDE 활용**: IntelliJ의 "Move Method", "Move Field", "Extract Method"로 작업 효율화.
+
+### 테스트 기반 안정성
+
+- JUnit으로 리팩터링 전/후 동일 동작 검증.
+- 경계 조건(빈 리스트, 잘못된 입력) 테스트로 안정성 강화.
+- `@RefactoringStage` 애너테이션으로 단계별 결과 비교.
+
+### 실행 결과 예시
+
+```bash
+> Task :test
+=== Refactoring Step: "MoveFunction" Test Start ===
+Interest: 5.0
+실행 시간: 8ms
+=== Refactoring Step: "MoveField" Test Start ===
+Interest Rate: 0.05
+실행 시간: 6ms
+=== Refactoring Step: "SplitLoop" Test Start ===
+Report: Total: 30.0, Count: 2
+실행 시간: 7ms
+=== Refactoring Step: "Pipeline" Test Start ===
+High Value Orders: [A]
+실행 시간: 5ms
+BUILD SUCCESSFUL in 1s
+```
+
+</details>
+
