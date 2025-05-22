@@ -1376,3 +1376,419 @@ BUILD SUCCESSFUL in 1s
 ```
 
 </details>
+
+
+<details>
+<summary><h3>ch10. 조건문 간소화</h3></summary>
+
+### 시나리오
+
+> 복잡한 조건문을 분해하고, 가독성을 높이며, 다형성을 활용해 유연한 코드로 변환하는 리팩터링 기법을 다룬다.
+
+- **목표**: 조건문을 간소화하여 코드의 의도를 명확히 하고, 유지보수성과 확장성을 높임.
+- **주요 기법**:
+  - 조건문 분해하기: 복잡한 조건을 함수로 추출.
+  - 중첩 조건문을 보호 구문으로 바꾸기: 얼리 리턴으로 Depth 감소.
+  - 조건문을 다형성으로 바꾸기: 타입별 동작 캡슐화.
+  - 특이 케이스 추가하기: `null`이나 특수 값을 객체로 처리.
+  - 어설션 추가하기: 불변식 명시 및 커뮤니케이션 강화.
+  - 제어 플래그를 탈출문으로 바꾸기: 불필요한 플래그 제거.
+
+### 리팩터링 과정
+
+10장은 복잡한 조건문을 간소화하여 코드의 가독성과 유지보수성을 높이는 기법을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다.
+
+#### 1. 조건문 분해하기
+
+- **목표**: 복잡한 조건문을 함수로 추출하여 의도를 명확히 표현.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 복잡한 조건문
+    public class Payment {
+        public double calculatePay(Employee employee) {
+            if (employee.isSeparated()) {
+                return 0.0;
+            } else if (employee.isRetired()) {
+                return 0.0;
+            } else {
+                return employee.getBasePay() * employee.getBonusRate();
+            }
+        }
+    }
+    
+    // 리팩터링 후: 조건문 분해
+    public class Payment {
+        public double calculatePay(Employee employee) {
+            if (isIneligibleForPayment(employee)) {
+                return 0.0;
+            }
+            return calculateNormalPay(employee);
+        }
+    
+        private boolean isIneligibleForPayment(Employee employee) {
+            return employee.isSeparated() || employee.isRetired();
+        }
+    
+        private double calculateNormalPay(Employee employee) {
+            return employee.getBasePay() * employee.getBonusRate();
+        }
+    }
+    ```
+
+- **효과**: 각 조건의 의도 명확, 재사용 가능, 테스트 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testDecomposeConditional() {
+        Employee employee = new Employee(1000.0, 1.5, false, false);
+        Payment payment = new Payment();
+        assertEquals(1500.0, payment.calculatePay(employee), 0.01);
+        assertEquals(0.0, payment.calculatePay(new Employee(1000.0, 1.5, true, false)), 0.01);
+    }
+    ```
+
+- **팁**: 함수명은 DDD 유비쿼터스 언어 반영, IntelliJ의 "Extract Method" 활용.
+
+#### 2. 중첩 조건문을 보호 구문으로 바꾸기
+
+- **목표**: 중첩 조건문을 얼리 리턴으로 대체하여 코드 Depth 감소.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 중첩 조건문
+    public class Order {
+        public double getDiscountedPrice(double price, boolean isVip) {
+            double result;
+            if (isVip) {
+                if (price > 1000) {
+                    result = price * 0.9;
+                } else {
+                    result = price;
+                }
+            } else {
+                result = price;
+            }
+            return result;
+        }
+    }
+    
+    // 리팩터링 후: 보호 구문
+    public class Order {
+        public double getDiscountedPrice(double price, boolean isVip) {
+            if (!isVip) return price;
+            if (price <= 1000) return price;
+            return price * 0.9;
+        }
+    }
+    ```
+
+- **효과**: 코드 플랫화, 가독성 향상, 유지보수 비용 감소.
+- **테스트**:
+
+    ```java
+    @Test
+    void testGuardClauses() {
+        Order order = new Order();
+        assertEquals(1000.0, order.getDiscountedPrice(1000.0, false), 0.01);
+        assertEquals(900.0, order.getDiscountedPrice(1000.0, true), 0.01);
+    }
+    ```
+
+- **팁**: 얼리 리턴으로 예외 케이스 처리, `else` 최소화, IntelliJ의 "Invert If" 활용.
+
+#### 3. 조건문을 다형성으로 바꾸기
+
+- **목표**: 조건문을 타입별 동작으로 캡슐화하여 확장성 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 스위치문
+    public class Bird {
+        public double getSpeed(String type) {
+            switch (type) {
+                case "European":
+                    return 40.0;
+                case "African":
+                    return 35.0;
+                case "NorwegianBlue":
+                    return isNailed ? 0.0 : 38.0;
+                default:
+                    throw new IllegalArgumentException("Unknown bird type");
+            }
+        }
+    }
+    
+    // 리팩터링 후: 다형성
+    public abstract class Bird {
+        public abstract double getSpeed();
+    }
+    
+    public class EuropeanBird extends Bird {
+        @Override
+        public double getSpeed() {
+            return 40.0;
+        }
+    }
+    
+    public class AfricanBird extends Bird {
+        @Override
+        public double getSpeed() {
+            return 35.0;
+        }
+    }
+    
+    public class NorwegianBlueBird extends Bird {
+        private final boolean isNailed;
+    
+        public NorwegianBlueBird(boolean isNailed) {
+            this.isNailed = isNailed;
+        }
+    
+        @Override
+        public double getSpeed() {
+            return isNailed ? 0.0 : 38.0;
+        }
+    }
+    
+    public class BirdFactory {
+        public static Bird createBird(String type, boolean isNailed) {
+            return switch (type) {
+                case "European" -> new EuropeanBird();
+                case "African" -> new AfricanBird();
+                case "NorwegianBlue" -> new NorwegianBlueBird(isNailed);
+                default -> throw new IllegalArgumentException("Unknown bird type");
+            };
+        }
+    }
+    ```
+
+- **효과**: Open/Closed 원칙 준수, 새로운 타입 추가 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testPolymorphism() {
+        assertEquals(40.0, BirdFactory.createBird("European", false).getSpeed(), 0.01);
+        assertEquals(35.0, BirdFactory.createBird("African", false).getSpeed(), 0.01);
+        assertEquals(0.0, BirdFactory.createBird("NorwegianBlue", true).getSpeed(), 0.01);
+    }
+    ```
+
+- **팁**: 복잡한 비즈니스 로직에 적용, 도메인 지식 필요. Spring의 `@Component`로 타입 관리 가능.
+
+#### 4. 특이 케이스 추가하기
+
+- **목표**: `null`이나 특수 값을 객체로 대체하여 일관된 동작 보장.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: null 체크
+    public class Site {
+        private Customer customer;
+    
+        public String getCustomerName() {
+            return customer == null ? "occupant" : customer.getName();
+        }
+    
+        public BillingPlan getBillingPlan() {
+            return customer == null ? BillingPlan.BASIC : customer.getBillingPlan();
+        }
+    }
+    
+    // 리팩터링 후: 특이 케이스
+    public interface Customer {
+        String getName();
+        BillingPlan getBillingPlan();
+    }
+    
+    public class RealCustomer implements Customer {
+        private final String name;
+        private final BillingPlan billingPlan;
+    
+        public RealCustomer(String name, BillingPlan billingPlan) {
+            this.name = name;
+            this.billingPlan = billingPlan;
+        }
+    
+        @Override
+        public String getName() { return name; }
+        @Override
+        public BillingPlan getBillingPlan() { return billingPlan; }
+    }
+    
+    public class UnknownCustomer implements Customer {
+        @Override
+        public String getName() { return "occupant"; }
+        @Override
+        public BillingPlan getBillingPlan() { return BillingPlan.BASIC; }
+    }
+    
+    public class Site {
+        private final Customer customer;
+    
+        public Site(Customer customer) {
+            this.customer = customer != null ? customer : new UnknownCustomer();
+        }
+    
+        public String getCustomerName() { return customer.getName(); }
+        public BillingPlan getBillingPlan() { return customer.getBillingPlan(); }
+    }
+    ```
+
+- **효과**: `null` 체크 제거, 일관된 인터페이스 제공.
+- **테스트**:
+
+    ```java
+    @Test
+    void testSpecialCase() {
+        Site site = new Site(null);
+        assertEquals("occupant", site.getCustomerName());
+        assertEquals(BillingPlan.BASIC, site.getBillingPlan());
+    }
+    ```
+
+- **팁**: Null Object 패턴 활용, Java `Optional`과 비교 검토.
+
+#### 5. 어설션 추가하기
+
+- **목표**: 불변식을 명시하여 버그 방지 및 개발자 의사소통 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 검증 없음
+    public class Discount {
+        public double applyDiscount(double price, double discountRate) {
+            return price * (1 - discountRate);
+        }
+    }
+    
+    // 리팩터링 후: 어설션 추가
+    public class Discount {
+        public double applyDiscount(double price, double discountRate) {
+            assert price >= 0 : "Price must be non-negative";
+            assert discountRate >= 0 && discountRate <= 1 : "Discount rate must be between 0 and 1";
+            return price * (1 - discountRate);
+        }
+    }
+    ```
+
+- **효과**: 잘못된 입력 방지, 코드 의도 명확화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testIntroduceAssertion() {
+        Discount discount = new Discount();
+        assertEquals(900.0, discount.applyDiscount(1000.0, 0.1), 0.01);
+        assertThrows(AssertionError.class, () -> discount.applyDiscount(-1000.0, 0.1));
+    }
+    ```
+
+- **실무 팁**: Java의 `assert`는 프로덕션에서 비활성화 가능, Spring의 `Assert` 유틸리티 권장. 사용자 입력 검증보다는 내부 불변식 보장에 사용.
+
+#### 6. 제어 플래그를 탈출문으로 바꾸기
+
+- **목표**: 불필요한 제어 플래그 제거, 루프 제어를 `break`로 대체.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 제어 플래그
+    public class AlertSystem {
+        public void sendAlert(List<String> users) {
+            boolean alerted = false;
+            for (String user : users) {
+                if (!alerted && user.equals("admin")) {
+                    System.out.println("Alert sent to admin");
+                    alerted = true;
+                }
+            }
+        }
+    }
+    
+    // 리팩터링 후: 탈출문
+    public class AlertSystem {
+        public void sendAlert(List<String> users) {
+            for (String user : users) {
+                if (user.equals("admin")) {
+                    System.out.println("Alert sent to admin");
+                    break;
+                }
+            }
+        }
+    }
+    ```
+
+- **효과**: 코드 단순화, 제어 흐름 명확화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceControlFlag() {
+        AlertSystem system = new AlertSystem();
+        List<String> users = Arrays.asList("user1", "admin", "user2");
+        system.sendAlert(users); // Manual verification or use Mockito to spy System.out
+    }
+    ```
+
+- **팁**: Mockito로 메서드 호출 횟수 검증, 루프 복잡도 낮추기.
+
+### 실무 관점
+
+- **장점**:
+  - **가독성**: 보호 구문으로 중첩 제거, 조건문 분해로 의도 명확화.
+  - **확장성**: 다형성으로 새로운 타입 추가 용이, Open/Closed 원칙 준수.
+  - **안정성**: 어설션으로 불변식 보장, 특이 케이스로 `null` 처리 간소화.
+  - **유지보수성**: 제어 플래그 제거로 로직 단순화.
+- **한계**:
+  - **다형성 오버엔지니어링**: 간단한 조건문에 다형성 적용 시 복잡성 증가.
+  - **어설션**: Java `assert`는 프로덕션에서 비활성화 가능, Spring `Assert` 권장.
+  - **도메인 지식**: 다형성/특이 케이스 적용 시 비즈니스 로직 이해 필수.
+- **적용 기준**:
+  - **조건문 분해**: 조건이 3개 이상이거나 복잡할 때 함수 추출.
+  - **보호 구문**: 중첩 Depth 2 이상 시 얼리 리턴 적용.
+  - **다형성**: 조건이 반복되거나 새로운 타입 추가 가능성 있을 때.
+  - **특이 케이스**: `null` 체크 반복 시 Null Object 패턴 적용.
+  - **어설션**: 불변식(예: 양수, 범위) 명시, 사용자 입력 검증은 별도 처리.
+  - **제어 플래그**: 루프 내 플래그 사용 시 `break`/`return` 대체.
+- **팀 컨벤션**:
+  - `else` 사용: 두 케이스가 동등한 정상 흐름일 때 사용, 예외 케이스는 얼리 리턴.
+  - 이름 짓기: 함수/클래스명은 DDD 유비쿼터스 언어 준수.
+  - 테스트: 경계 조건(음수, `null`) 테스트 필수, Mockito로 상호작용 검증.
+- **IDE 활용**: IntelliJ의 "Extract Method", "Invert If", "Replace with Polymorphism" 활용.
+
+### 테스트 기반 안정성
+
+- JUnit으로 리팩터링 전/후 동일 동작 검증.
+- 경계 조건(음수, `null`, 빈 리스트) 테스트로 안정성 강화.
+- Mockito로 메서드 호출 횟수 검증(예: `sendAlert` 호출).
+- `@RefactoringStage` 애너테이션으로 단계별 비교.
+
+### 실행 결과 예시
+
+```bash
+> Task :test
+=== Refactoring Step: "DecomposeConditional" Test Start ===
+Pay: 1500.0, Separated: 0.0
+실행 시간: 7ms
+=== Refactoring Step: "GuardClauses" Test Start ===
+Discounted Price: 900.0
+실행 시간: 6ms
+=== Refactoring Step: "Polymorphism" Test Start ===
+Speed: 40.0 (European), 35.0 (African)
+실행 시간: 8ms
+=== Refactoring Step: "SpecialCase" Test Start ===
+Customer Name: occupant
+실행 시간: 5ms
+=== Refactoring Step: "IntroduceAssertion" Test Start ===
+Discount: 900.0
+실행 시간: 6ms
+=== Refactoring Step: "ReplaceControlFlag" Test Start ===
+Alert sent to admin
+실행 시간: 5ms
+BUILD SUCCESSFUL in 1s
+```
+
+</details>
+
