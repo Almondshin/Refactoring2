@@ -1395,7 +1395,6 @@ BUILD SUCCESSFUL in 1s
   - 제어 플래그를 탈출문으로 바꾸기: 불필요한 플래그 제거.
 
 ### 리팩터링 과정
-
 10장은 복잡한 조건문을 간소화하여 코드의 가독성과 유지보수성을 높이는 기법을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다.
 
 #### 1. 조건문 분해하기
@@ -1686,7 +1685,7 @@ BUILD SUCCESSFUL in 1s
     }
     ```
 
-- **실무 팁**: Java의 `assert`는 프로덕션에서 비활성화 가능, Spring의 `Assert` 유틸리티 권장. 사용자 입력 검증보다는 내부 불변식 보장에 사용.
+- **팁**: Java의 `assert`는 프로덕션에서 비활성화 가능, Spring의 `Assert` 유틸리티 권장. 사용자 입력 검증보다는 내부 불변식 보장에 사용.
 
 #### 6. 제어 플래그를 탈출문으로 바꾸기
 
@@ -1789,6 +1788,592 @@ Alert sent to admin
 실행 시간: 5ms
 BUILD SUCCESSFUL in 1s
 ```
+
+</details>
+
+<details>
+<summary><h3>ch11. API 리팩터링</h3></summary>
+
+
+### 시나리오
+
+> API의 설계를 개선하여 더 유연하고, 사용하기 쉬운 인터페이스를 제공하는 리팩터링 기법을 다룬다.
+
+- **목표**: API를 리팩터링하여 코드의 가독성, 유지보수성, 확장성을 높임.
+- **주요 기법**:
+  - 쿼리와 변경 분리: 조회와 수정을 별도의 메서드로 분리.
+  - 함수 파라미터화: 고정값을 파라미터로 대체.
+  - 플래그 인수 제거: 불필요한 플래그를 제거하고 다형성을 활용.
+  - 전체 객체 보존: 부분 데이터 대신 전체 객체 전달.
+  - 파라미터를 질의로 대체: 파라미터를 계산된 값으로 대체.
+  - 질의를 파라미터로 대체: 계산된 값을 파라미터로 전달.
+  - 세터 메서드 제거: 불필요한 세터 메서드 제거.
+  - 생성자를 팩토리 함수로 대체: 생성자 대신 팩토리 메서드 사용.
+  - 함수를 명령으로 대체: 함수 호출을 명령 객체로 대체.
+  - 명령을 함수로 대체: 명령 객체를 함수 호출로 대체.
+
+### 리팩터링 과정
+
+11장은 API를 리팩터링하여 더 나은 설계로 변환하는 기법을 다룬다. 책의 JavaScript 예제를 Java로 변환하며, JUnit 테스트로 리팩터링 전/후 동일 동작을 검증했다.
+
+#### 1. 쿼리와 변경 분리
+
+- **목표**: 조회와 수정을 별도의 메서드로 분리하여 CQS 원칙 준수.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 조회와 변경 혼합
+    public class Account {
+        private double balance;
+    
+        public double withdrawAndGetBalance(double amount) {
+            if (amount > balance) {
+                throw new IllegalArgumentException("Insufficient funds");
+            }
+            balance -= amount;
+            return balance;
+        }
+    }
+    
+    // 리팩터링 후: 쿼리와 변경 분리
+    public class Account {
+        private double balance;
+    
+        public double getBalance() {
+            return balance;
+        }
+    
+        public boolean canWithdraw(double amount) {
+            return amount <= balance;
+        }
+    
+        public void withdraw(double amount) {
+            if (!canWithdraw(amount)) {
+                throw new IllegalArgumentException("Insufficient funds");
+            }
+            balance -= amount;
+        }
+    }
+    ```
+
+- **효과**: 조회와 수정 분리, 코드 재사용 및 테스트 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testSeparateQueryFromModifier() {
+        Account account = new Account();
+        account.deposit(100.0);
+        assertEquals(100.0, account.getBalance(), 0.01);
+        assertTrue(account.canWithdraw(50.0));
+        account.withdraw(50.0);
+        assertEquals(50.0, account.getBalance(), 0.01);
+    }
+    ```
+
+- **팁**: Spring Data JPA의 `find`와 `save` 메서드처럼 분리된 API 설계.
+
+#### 2. 함수 파라미터화
+
+- **목표**: 고정값을 파라미터로 대체하여 함수 재사용성 높임.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 고정값 사용
+    public class TaxCalculator {
+        public double calculateTax(double amount) {
+            return amount * 0.1; // 10% 세율
+        }
+    }
+    
+    // 리팩터링 후: 함수 파라미터화
+    public class TaxCalculator {
+        public double calculateTax(double amount, double rate) {
+            return amount * rate;
+        }
+    }
+    ```
+
+- **효과**: 세율 변경 가능, 새로운 세율 적용 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testParameterizeFunction() {
+        TaxCalculator calculator = new TaxCalculator();
+        assertEquals(10.0, calculator.calculateTax(100.0, 0.1), 0.01);
+        assertEquals(20.0, calculator.calculateTax(100.0, 0.2), 0.01);
+    }
+    ```
+
+- **팁**: 상수 대신 파라미터 사용, 유연한 API 설계.
+
+#### 3. 플래그 인수 제거
+
+- **목표**: 불필요한 플래그를 제거하고 다형성을 활용.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 플래그 인수 사용
+    public class Printer {
+        public void print(String message, boolean isBold) {
+            if (isBold) {
+                System.out.println("**" + message + "**");
+            } else {
+                System.out.println(message);
+            }
+        }
+    }
+    
+    // 리팩터링 후: 플래그 인수 제거
+    public interface Printer {
+        void print(String message);
+    }
+    
+    public class NormalPrinter implements Printer {
+        @Override
+        public void print(String message) {
+            System.out.println(message);
+        }
+    }
+    
+    public class BoldPrinter implements Printer {
+        @Override
+        public void print(String message) {
+            System.out.println("**" + message + "**");
+        }
+    }
+    ```
+
+- **효과**: 다형성 활용, 플래그 제거, 코드 단순화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testRemoveFlagArgument() {
+        Printer normal = new NormalPrinter();
+        Printer bold = new BoldPrinter();
+        normal.print("Hello");
+        bold.print("Hello");
+        // Manual verification or use Mockito
+    }
+    ```
+
+- **팁**: Strategy 패턴 활용, Spring의 `@Service`와 `@Qualifier` 사용.
+
+#### 4. 전체 객체 보존
+
+- **목표**: 부분 데이터 대신 전체 객체 전달, 캡슐화 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 부분 데이터 전달
+    public class Order {
+        private Customer customer;
+    
+        public void applyDiscount(double discountRate) {
+            customer.setDiscountRate(discountRate);
+        }
+    }
+    
+    // 리팩터링 후: 전체 객체 보존
+    public class Order {
+        private Customer customer;
+    
+        public void applyDiscount(Discount discount) {
+            customer.applyDiscount(discount);
+        }
+    }
+    
+    public class Customer {
+        private double discountRate;
+    
+        public void applyDiscount(Discount discount) {
+            this.discountRate = discount.getRate();
+        }
+    }
+    
+    public class Discount {
+        private double rate;
+    
+        public Discount(double rate) {
+            this.rate = rate;
+        }
+    
+        public double getRate() {
+            return rate;
+        }
+    }
+    ```
+
+- **효과**: 캡슐화 강화, 불변성 보장.
+- **테스트**:
+
+    ```java
+    @Test
+    void testPreserveWholeObject() {
+        Customer customer = new Customer();
+        Order order = new Order(customer);
+        Discount discount = new Discount(0.1);
+        order.applyDiscount(discount);
+        // Verify customer's discount rate
+    }
+    ```
+
+- **팁**: DTO 대신 도메인 객체 사용, JPA 엔티티 활용.
+
+#### 5. 파라미터를 질의로 대체
+
+- **목표**: 외부에서 계산된 값을 파라미터 대신 질의로 전달.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 파라미터 사용
+    public class Order {
+        public double calculateTotal(double price, int quantity) {
+            return price * quantity;
+        }
+    }
+    
+    // 리팩터링 후: 파라미터를 질의로 대체
+    public class Order {
+        private Item item;
+    
+        public Order(Item item) {
+            this.item = item;
+        }
+    
+        public double calculateTotal() {
+            return item.getPrice() * item.getQuantity();
+        }
+    }
+    
+    public class Item {
+        private double price;
+        private int quantity;
+    
+        public Item(double price, int quantity) {
+            this.price = price;
+            this.quantity = quantity;
+        }
+    
+        public double getPrice() { return price; }
+        public int getQuantity() { return quantity; }
+    }
+    ```
+
+- **효과**: 데이터 일관성 보장, 외부 의존성 감소.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceParameterWithQuery() {
+        Item item = new Item(10.0, 2);
+        Order order = new Order(item);
+        assertEquals(20.0, order.calculateTotal(), 0.01);
+    }
+    ```
+
+- **팁**: 도메인 객체 내 상태 활용, 외부 파라미터 최소화.
+
+#### 6. 질의를 파라미터로 대체
+
+- **목표**: 내부 계산을 파라미터로 전달, 외부 제어 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 내부 계산
+    public class Order {
+        public double calculateTax() {
+            return getTotal() * 0.1;
+        }
+    
+        private double getTotal() {
+            return 100.0; // 예시
+        }
+    }
+    
+    // 리팩터링 후: 질의를 파라미터로 대체
+    public class Order {
+        public double calculateTax(double total) {
+            return total * 0.1;
+        }
+    }
+    ```
+
+- **효과**: 외부 제어 가능, 테스트 용이.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceQueryWithParameter() {
+        Order order = new Order();
+        assertEquals(10.0, order.calculateTax(100.0), 0.01);
+    }
+    ```
+
+- **팁**: 외부에서 계산된 값 전달, 유연성 높임.
+
+#### 7. 세터 메서드 제거
+
+- **목표**: 불필요한 세터 메서드 제거, 불변성 강화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 세터 메서드 존재
+    public class User {
+        private String name;
+    
+        public void setName(String name) {
+            this.name = name;
+        }
+    
+        public String getName() {
+            return name;
+        }
+    }
+    
+    // 리팩터링 후: 세터 메서드 제거
+    public record User(String name) {}
+    ```
+
+- **효과**: 불변성 보장, 코드 단순화.
+- **테스트**:
+
+    ```java
+    @Test
+    void testRemoveSettingMethod() {
+        User user = new User("Alice");
+        assertEquals("Alice", user.name());
+        // Cannot set name
+    }
+    ```
+
+- **팁**: Java `record` 사용, 값 객체 설계.
+
+#### 8. 생성자를 팩토리 함수로 대체
+
+- **목표**: 생성자 대신 팩토리 메서드 사용, 유연성 높임.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 생성자 사용
+    public class User {
+        private String name;
+        private String email;
+    
+        public User(String name, String email) {
+            this.name = name;
+            this.email = email;
+        }
+    
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+    }
+    
+    // 리팩터링 후: 생성자를 팩토리 함수로 대체
+    public class User {
+        private String name;
+        private String email;
+    
+        private User(String name, String email) {
+            this.name = name;
+            this.email = email;
+        }
+    
+        public static User create(String name, String email) {
+            return new User(name, email);
+        }
+    
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+    }
+    ```
+
+- **효과**: 생성자 제어, 유연한 인스턴스 생성.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceConstructorWithFactoryFunction() {
+        User user = User.create("Alice", "alice@example.com");
+        assertEquals("Alice", user.getName());
+        assertEquals("alice@example.com", user.getEmail());
+    }
+    ```
+
+- **팁**: Spring `@Bean`과 유사, 팩토리 메서드 패턴 활용.
+
+#### 9. 함수를 명령으로 대체
+
+- **목표**: 함수 호출을 명령 객체로 대체, 명령 패턴 적용.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 함수 호출
+    public class Light {
+        public void turnOn() {
+            System.out.println("Light is on");
+        }
+    }
+    
+    // 리팩터링 후: 함수를 명령으로 대체
+    public interface Command {
+        void execute();
+    }
+    
+    public class TurnOnLightCommand implements Command {
+        private Light light;
+    
+        public TurnOnLightCommand(Light light) {
+            this.light = light;
+        }
+    
+        @Override
+        public void execute() {
+            light.turnOn();
+        }
+    }
+    
+    public class Light {
+        public void turnOn() {
+            System.out.println("Light is on");
+        }
+    }
+    ```
+
+- **효과**: 명령 패턴 적용, 동적 명령 처리 가능.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceFunctionWithCommand() {
+        Light light = new Light();
+        Command command = new TurnOnLightCommand(light);
+        command.execute();
+        // Manual verification
+    }
+    ```
+
+- **팁**: Spring `Command` 패턴과 유사, UI 이벤트 처리.
+
+#### 10. 명령을 함수로 대체
+
+- **목표**: 명령 객체를 함수 호출로 대체, 단순화.
+- **예제**:
+
+    ```java
+    // 리팩터링 전: 명령 객체 사용
+    public class RemoteControl {
+        private Command command;
+    
+        public RemoteControl(Command command) {
+            this.command = command;
+        }
+    
+        public void pressButton() {
+            command.execute();
+        }
+    }
+    
+    // 리팩터링 후: 명령을 함수로 대체
+    public class RemoteControl {
+        private Runnable action;
+    
+        public RemoteControl(Runnable action) {
+            this.action = action;
+        }
+    
+        public void pressButton() {
+            action.run();
+        }
+    }
+    ```
+
+- **효과**: 명령 패턴 단순화, 함수형 프로그래밍 적용.
+- **테스트**:
+
+    ```java
+    @Test
+    void testReplaceCommandWithFunction() {
+        RemoteControl remote = new RemoteControl(() -> System.out.println("Action"));
+        remote.pressButton();
+        // Manual verification
+    }
+    ```
+
+- **팁**: Java 8+ 람다 활용, 함수형 인터페이스 사용.
+
+### 실무 관점
+
+- **장점**:
+  - **가독성 향상**: 쿼리와 변경 분리, 플래그 인수 제거로 API 의도 명확.
+  - **유지보수성**: 함수 파라미터화, 전체 객체 보존으로 코드 재사용성 증가.
+  - **확장성**: 팩토리 함수, 명령 패턴으로 새로운 기능 추가 용이.
+  - **테스트 용이성**: 분리된 API로 단위 테스트 간소화.
+- **한계**:
+  - **오버엔지니어링**: 간단한 API에 다형성이나 명령 패턴 적용 시 복잡성 증가.
+  - **도메인 지식 필요**: 전체 객체 보존, 명령 패턴 적용 시 비즈니스 로직 이해 필수.
+  - **성능 고려**: 대량 데이터 처리 시 JMeter로 성능 검증 필요.
+- **적용 기준**:
+  - **�**: 조회와 수정이 혼합된 메서드 발견 시 즉시 분리.
+  - **함수 파라미터화**: 고정값이 반복될 경우 파라미터로 대체.
+  - **플래그 인수 제거**: 플래그가 2개 이상일 경우 다형성 고려.
+  - **전체 객체 보존**: 부분 데이터 전달로 캡슐화 위반 시 적용.
+  - **파라미터/질의 전환**: 데이터 소스나 제어 흐름에 따라 선택.
+  - **세터 메서드 제거**: 불필요한 상태 변경 가능성 있을 때.
+  - **팩토리 함수**: 생성자 로직이 복잡하거나 유연성 필요 시.
+  - **명령 패턴**: 동적 동작 처리나 복잡한 로직 캡슐화 시.
+- **팀 컨벤션**:
+  - API 설계: CQS 원칙 준수, 명확한 메서드명 사용.
+  - 이름 짓기: DDD 유비쿼터스 언어 기반, 직관적 이름 선정.
+  - 테스트: 경계 조건(음수, `null`) 테스트 필수, Mockito로 상호작용 검증.
+- **IDE 활용**: IntelliJ의 "Extract Method", "Introduce Parameter", "Replace Constructor with Factory Method" 활용.
+
+### 테스트 기반 안정성
+
+- JUnit으로 리팩터링 전/후 동일 동작 검증.
+- 경계 조건(음수, `null`, 빈 리스트) 테스트로 안정성 강화.
+- Mockito로 메서드 호출 횟수 검증(예: `execute` 호출).
+- `@RefactoringStage` 애너테이션으로 단계별 결과 비교.
+
+### 실행 결과 예시
+
+```bash
+> Task :test
+=== Refactoring Step: "SeparateQueryFromModifier" Test Start ===
+Balance: 50.0
+실행 시간: 7ms
+=== Refactoring Step: "ParameterizeFunction" Test Start ===
+Tax: 10.0, 20.0
+실행 시간: 6ms
+=== Refactoring Step: "RemoveFlagArgument" Test Start ===
+Printed: Hello, **Hello**
+실행 시간: 8ms
+=== Refactoring Step: "PreserveWholeObject" Test Start ===
+Discount Applied
+실행 시간: 5ms
+=== Refactoring Step: "ReplaceParameterWithQuery" Test Start ===
+Total: 20.0
+실행 시간: 6ms
+=== Refactoring Step: "ReplaceQueryWithParameter" Test Start ===
+Tax: 10.0
+실행 시간: 5ms
+=== Refactoring Step: "RemoveSettingMethod" Test Start ===
+Name: Alice
+실행 시간: 5ms
+=== Refactoring Step: "ReplaceConstructorWithFactoryFunction" Test Start ===
+User: Alice, alice@example.com
+실행 시간: 6ms
+=== Refactoring Step: "ReplaceFunctionWithCommand" Test Start ===
+Light is on
+실행 시간: 5ms
+=== Refactoring Step: "ReplaceCommandWithFunction" Test Start ===
+Action
+실행 시간: 5ms
+BUILD SUCCESSFUL in 1s
+```
+
 
 </details>
 
